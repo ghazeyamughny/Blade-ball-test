@@ -210,11 +210,25 @@ local function spawnBall()
     ball.Size = Vector3.new(2.5, 2.5, 2.5)
     ball.BrickColor = BrickColor.new("Cyan")
     ball.Material = Enum.Material.Neon
-    ball.Anchored = true
+    ball.Anchored = false
     ball.CanCollide = false
     ball.CastShadow = false
+    ball.Massless = true
     ball.Position = spawnPos
     ball.Parent = workspace
+
+    -- BodyVelocity untuk gerak bola (lebih reliable dari CFrame di server)
+    local bodyVel = Instance.new("BodyVelocity")
+    bodyVel.Name = "BallVelocity"
+    bodyVel.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+    bodyVel.Velocity = Vector3.new(0, 0, 0)
+    bodyVel.Parent = ball
+
+    -- BodyGyro supaya tidak berputar liar
+    local bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+    bodyGyro.D = 100
+    bodyGyro.Parent = ball
 
     addBallEffects(ball)
 
@@ -232,7 +246,7 @@ local function spawnBall()
     print("[BallSpawner] Bola spawn! Target: " .. ballTarget.Name)
 
     -- ============================================================
-    -- GERAKKAN BOLA
+    -- GERAKKAN BOLA pakai BodyVelocity
     -- ============================================================
     moveConn = RunService.Heartbeat:Connect(function(dt)
         if not ball or not ball.Parent then
@@ -240,10 +254,16 @@ local function spawnBall()
             return
         end
 
+        local bv = ball:FindFirstChild("BallVelocity")
+        if not bv then return end
+
         -- Refresh target kalau hilang
         if not ballTarget or not ballTarget.Character or not ballTarget.Character.Parent then
             ballTarget = pickTarget("")
-            if not ballTarget then return end
+            if not ballTarget then
+                bv.Velocity = Vector3.new(0, 0, 0)
+                return
+            end
             print("[BallSpawner] Target baru: " .. ballTarget.Name)
         end
 
@@ -255,30 +275,39 @@ local function spawnBall()
 
         local hum = ballTarget.Character:FindFirstChild("Humanoid")
         if not hum or hum.Health <= 0 then
-            ballTarget = pickTarget(ballTarget.Name)
+            ballTarget = pickTarget(ballTarget and ballTarget.Name or "")
             return
         end
 
-        -- Gerak bola ke target
-        local ballPos  = ball.Position
+        -- Arahkan velocity ke target
+        local ballPos   = ball.Position
         local targetPos = hrp.Position
-        local dir = targetPos - ballPos
-        local dist = dir.Magnitude
+        local dir       = (targetPos - ballPos)
+        local dist      = dir.Magnitude
 
-        if dist < 2.5 then
+        -- Set velocity ke arah target
+        bv.Velocity = dir.Unit * ballSpeed
+
+        if dist < 3 then
             -- HIT TARGET
             print("[BallSpawner] HIT! " .. ballTarget.Name .. " terkena bola!")
             spawnExplosionEffect(ballPos)
+            bv.Velocity = Vector3.new(0, 0, 0)
 
             -- Matikan target
             if hum and hum.Health > 0 then
                 hum.Health = 0
             end
 
-            -- Pilih target baru setelah jeda
             local deadName = ballTarget.Name
             ballTarget = nil
-            ball.Position = spawnPos  -- reset posisi bola ke tengah
+
+            -- Reset posisi bola ke tengah
+            task.delay(0.1, function()
+                if ball and ball.Parent then
+                    ball.Position = spawnPos
+                end
+            end)
 
             task.delay(1.5, function()
                 local newTarget = pickTarget(deadName)
@@ -287,16 +316,11 @@ local function spawnBall()
                     ballSpeed = math.max(BALL_SPEED, ballSpeed - 8)
                     print("[BallSpawner] Target baru setelah kill: " .. newTarget.Name)
                 else
-                    -- Semua mati, spawn ulang nanti
-                    print("[BallSpawner] Semua target mati, menunggu...")
+                    print("[BallSpawner] Semua target mati!")
                     task.delay(3, spawnBall)
                 end
             end)
-            return
         end
-
-        local step = math.min(ballSpeed * dt, dist)
-        ball.CFrame = CFrame.new(ballPos + dir.Unit * step, targetPos)
     end)
 
     -- ============================================================
