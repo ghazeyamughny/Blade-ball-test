@@ -235,6 +235,8 @@ function RoundSystem:StartLoop()
                 broadcastUI("PlayerCount", {count = #Players:GetPlayers(), min = MIN_PLAYERS})
                 task.wait(2)
             end
+            -- Pastikan ada minimal 1 pemain asli
+            if #Players:GetPlayers() < 1 then continue end
 
             -- INTERMISSION
             broadcastState("Intermission", {})
